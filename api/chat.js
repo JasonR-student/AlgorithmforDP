@@ -11,7 +11,7 @@ const sensitivePatterns = [
 
 /**
  * 检查用户输入是否疑似包含敏感信息。
- * 命中时拒绝请求，避免把密钥、证件号或银行卡号转发给在线模型。
+ * 命中时拒绝请求，避免把密钥、证件号或银行卡号转发给外部服务。
  */
 function containsSensitiveInfo(value = '') {
   return sensitivePatterns.some((pattern) => pattern.test(value));
@@ -130,7 +130,7 @@ function json(response, status, payload) {
 
 /**
  * Vercel Serverless Function 主入口。
- * 负责限额、敏感信息拦截、在线模型调用和本地降级提示。
+ * 负责限额、敏感信息拦截、在线服务调用和降级提示。
  */
 export default async function handler(request, response) {
   if (request.method !== 'POST') {
@@ -155,7 +155,7 @@ export default async function handler(request, response) {
       limited: true,
       remaining: 0,
       dailyLimit,
-      reply: `今日 AI 回答次数已达上限 ${dailyLimit} 次。`,
+      reply: `今日问答次数已达上限 ${dailyLimit} 次。`,
     });
   }
 
@@ -165,7 +165,7 @@ export default async function handler(request, response) {
       configured: false,
       remaining: Math.max(dailyLimit - usage.count, 0),
       dailyLimit,
-      reply: '在线模型未启用。算法与可视化仍可完整运行，AI 面板会使用本地规则分析。',
+      reply: '当前未启用在线回答。算法与可视化仍可完整运行，问答区会显示基础说明。',
     });
   }
 
@@ -222,7 +222,7 @@ export default async function handler(request, response) {
       reply: payload?.choices?.[0]?.message?.content || '暂时没有生成回复。',
     });
   } catch (error) {
-    const message = error.name === 'AbortError' ? '请求超时，请稍后再试。' : 'AI 服务暂时不可用。';
+    const message = error.name === 'AbortError' ? '请求超时，请稍后再试。' : '问答服务暂时不可用。';
     return json(response, 500, { error: message });
   } finally {
     clearTimeout(timeout);

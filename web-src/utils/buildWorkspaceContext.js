@@ -1,5 +1,5 @@
 /**
- * 构造 AI 助手需要的当前实验上下文。
+ * 构造问答区需要的当前实验上下文。
  * 所有字段都保持简短，便于后端代理限制输入体积并保护页面性能。
  */
 export function buildWorkspaceContext({ str1, str2, result, selectedRef, readerReference }) {

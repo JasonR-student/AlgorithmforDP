@@ -1,5 +1,5 @@
 /**
- * 为独立文献阅读页构造更聚焦的 AI 上下文。
+ * 为独立文献阅读页构造更聚焦的问答上下文。
  * 这样右侧问答能够围绕当前论文，而不是泛泛讨论整个项目。
  */
 export function buildReferenceContext(baseContext, item) {

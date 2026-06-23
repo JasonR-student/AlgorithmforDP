@@ -2,7 +2,7 @@ import AIChatBot from '../../components/AIChatBot.jsx';
 
 /**
  * 独立文献阅读页。
- * 左侧负责 PDF 阅读，右侧 AI 使用当前论文上下文回答来源、内容和实现问题。
+ * 左侧负责 PDF 阅读，右侧围绕当前论文回答来源、内容和实现问题。
  */
 export default function ReferenceReaderPage({ reference, context }) {
   return (
@@ -39,8 +39,8 @@ export default function ReferenceReaderPage({ reference, context }) {
           <AIChatBot
             inline
             context={context}
-            title="论文 AI 问答"
-            subtitle="可询问来源、核心内容和基础实现"
+            title="论文问答"
+            subtitle="可查看来源、核心内容和基础实现"
             initialMode="文献讲解"
             quickPrompts={['这篇论文从哪里来？', '它主要讲了什么？', '基础代码怎么实现？']}
           />

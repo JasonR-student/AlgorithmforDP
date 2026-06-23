@@ -10,7 +10,7 @@ export default function ReferencesView({ selectedRef, refMode, onRefModeChange, 
       <div className="section-head">
         <div>
           <h1>参考文献</h1>
-          <p>列表保持紧凑展示；点击打开后在新页面阅读 PDF，并在右侧使用 AI 提问。</p>
+          <p>按主题整理核心论文；点击条目可进入独立阅读页查看 PDF。</p>
         </div>
         <div className="toolbar compact">
           <button type="button" className={`mini-action ${refMode === 'grid' ? 'mini-action-active' : ''}`} onClick={() => onRefModeChange('grid')}>
@@ -40,7 +40,7 @@ export default function ReferencesView({ selectedRef, refMode, onRefModeChange, 
                   打开论文
                 </button>
                 <button type="button" className="mini-action" onClick={() => onAskAi(item)}>
-                  问 AI
+                  提问
                 </button>
               </div>
             </article>

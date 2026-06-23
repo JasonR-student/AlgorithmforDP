@@ -48,8 +48,8 @@ export default function Navbar({ active, onChange, onOpenChat }) {
         </div>
 
         <button type="button" className="btn-secondary" onClick={onOpenChat}>
-          <span className="icon-glyph" aria-hidden="true">AI</span>
-          <span>AI 助手</span>
+          <span className="icon-glyph" aria-hidden="true">?</span>
+          <span>提问</span>
         </button>
       </nav>
     </header>

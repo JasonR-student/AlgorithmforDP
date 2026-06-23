@@ -4,11 +4,11 @@ import { localAnalysis, sendChatMessage } from '../services/chatApi.js';
 
 const welcome = {
   role: 'assistant',
-  content: '你好，我是算法学习助手。你可以直接询问当前输入、动态规划过程、效率对比或参考文献。',
+  content: '输入问题后，可查看当前输入、动态规划过程、效率对比或参考文献说明。',
 };
 
 /**
- * 可浮动也可内嵌的 AI 学习助手。
+ * 可浮动也可内嵌的问答面板。
  * inline=true 时用于文献阅读页右侧；默认模式用于主界面右下角浮窗。
  */
 export default function AIChatBot({
@@ -16,8 +16,8 @@ export default function AIChatBot({
   setIsOpen = () => {},
   context,
   inline = false,
-  title = 'AI 学习助手',
-  subtitle = '围绕当前页面回答问题',
+  title = '学习问答',
+  subtitle = '围绕当前页面整理说明',
   initialMode = '综合分析',
   quickPrompts = [],
 }) {
@@ -36,7 +36,7 @@ export default function AIChatBot({
 
   /**
    * 提交用户问题并追加回答。
-   * 在线模型失败时自动降级到本地规则分析，确保现场演示不断线。
+   * 在线服务失败时自动降级到基础说明，确保现场演示不断线。
    */
   async function submit(event) {
     event.preventDefault();
@@ -51,14 +51,14 @@ export default function AIChatBot({
     try {
       const result = await sendChatMessage(nextMessages, scopedContext);
       setMessages((current) => [...current, { role: 'assistant', content: result.reply }]);
-      if (result.configured === false) setHint('在线模型未启用，当前使用本地规则分析');
-      else if (Number.isFinite(Number(result.remaining))) setHint(`今日还可在线提问 ${result.remaining} 次`);
+      if (result.configured === false) setHint('当前显示基础说明');
+      else if (Number.isFinite(Number(result.remaining))) setHint(`今日剩余次数 ${result.remaining} 次`);
     } catch {
       setMessages((current) => [
         ...current,
-        { role: 'assistant', content: `${localAnalysis(scopedContext, trimmed)}\n\n在线代理不可用时自动使用本地规则分析。` },
+        { role: 'assistant', content: `${localAnalysis(scopedContext, trimmed)}\n\n暂时无法连接在线服务，已切换为基础说明。` },
       ]);
-      setHint('当前使用本地规则分析');
+      setHint('当前显示基础说明');
     } finally {
       setIsTyping(false);
     }
@@ -72,7 +72,7 @@ export default function AIChatBot({
             <span>{hint}</span>
           </div>
           {!inline ? (
-            <button type="button" className="icon-button" onClick={() => setIsOpen(false)} aria-label="关闭 AI">
+            <button type="button" className="icon-button" onClick={() => setIsOpen(false)} aria-label="关闭问答">
               <span aria-hidden="true">X</span>
             </button>
           ) : null}
@@ -139,8 +139,8 @@ export default function AIChatBot({
     <div className="chat-shell">
       {panel}
 
-      <button type="button" className="chat-fab" onClick={() => setIsOpen((value) => !value)} aria-label="打开 AI 助手">
-        <span aria-hidden="true">{isOpen ? 'AI' : 'AI'}</span>
+      <button type="button" className="chat-fab" onClick={() => setIsOpen((value) => !value)} aria-label="打开问答">
+        <span aria-hidden="true">{isOpen ? '问' : '问'}</span>
       </button>
     </div>
   );

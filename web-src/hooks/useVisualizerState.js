@@ -132,7 +132,7 @@ export function useVisualizerState() {
 
   /**
    * 打开独立文献阅读页。
-   * 主列表页不预览 PDF，只在新页面中加载 PDF 和右侧 AI 问答。
+   * 主列表页不预览 PDF，只在新页面中加载 PDF 和右侧问答。
    */
   function openReference(item) {
     setSelectedRef(item);
@@ -153,8 +153,8 @@ export function useVisualizerState() {
   }
 
   /**
-   * 生成当前文献的 AI 上下文。
-   * ReferenceReaderPage 会用它让右侧 AI 聚焦到正在阅读的论文。
+   * 生成当前文献的问答上下文。
+   * ReferenceReaderPage 会用它让右侧问答聚焦到正在阅读的论文。
    */
   function referenceContext(item) {
     return buildReferenceContext(context, item);

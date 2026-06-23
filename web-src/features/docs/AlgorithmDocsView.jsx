@@ -70,7 +70,7 @@ export default function AlgorithmDocsView({
               去动画中查看
             </button>
             <button type="button" className="btn-secondary" onClick={onOpenChat}>
-              让 AI 继续讲
+              展开说明
             </button>
           </div>
         </article>
