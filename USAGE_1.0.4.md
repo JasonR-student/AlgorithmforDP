@@ -1,8 +1,8 @@
 ﻿# LCS & SCS Wasm 可视化平台 1.0.4 使用说明
 
-作者：任正汗 | JasonRhan
+作者：任正江 | JasonRhan
 版本：`1.0.4`
-版权：Copyright 2026 任正汗 | JasonRhan. All rights reserved.
+版权：Copyright 2026 任正江 | JasonRhan. All rights reserved.
 
 ## 版本定位
 
