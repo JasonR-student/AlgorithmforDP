@@ -1,0 +1,15 @@
+build/
+release/
+tools/
+assets/
+docs/csdn-assets/
+*.exe
+*.obj
+*.pdb
+*.ilk
+*.zip
+*.doc
+*.docx
+*.xlsx
+.git/
+.idea/
