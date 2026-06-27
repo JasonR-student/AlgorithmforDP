@@ -6,6 +6,7 @@ const COOKIE_NAME = 'jasonrhan_lcs_ai_usage';
 const DEFAULT_BASE_URL = 'https://ark.cn-beijing.volces.com/api/v3';
 const DEFAULT_MODEL = 'doubao-seed-1-6-250615';
 const PDF_TEXT_LIMIT = 5200;
+const PDF_PARSE_MODULE = 'pdf-parse/lib/pdf-parse.js';
 const pdfTextCache = new Map();
 let pdfParserPromise = null;
 
@@ -160,7 +161,8 @@ async function readRemotePdfBuffer(context) {
 async function loadPdfParser() {
   process.noDeprecation = true;
   if (!pdfParserPromise) {
-    pdfParserPromise = import('pdf-parse/lib/pdf-parse.js').then((module) => module.default || module);
+    const runtimeImport = new Function('specifier', 'return import(specifier)');
+    pdfParserPromise = runtimeImport(PDF_PARSE_MODULE).then((module) => module.default || module);
   }
   return pdfParserPromise;
 }
