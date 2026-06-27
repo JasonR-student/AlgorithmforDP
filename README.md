@@ -58,7 +58,7 @@ LCS_AI_BASE_URL=https://ark.cn-beijing.volces.com/api/v3
 LCS_AI_DAILY_LIMIT=30
 ```
 
-后端也兼容 `DOUBAO_API_KEY`、`DOUBAO_MODEL`、`DOUBAO_BASE_URL`，但建议优先使用 `LCS_AI_*` 作为项目统一变量名。文献页问答会把当前页面文本、PDF 地址、论文方法说明和算法状态一起提交给后端代理。
+后端也兼容 `DOUBAO_API_KEY`、`DOUBAO_MODEL`、`DOUBAO_BASE_URL`，但建议优先使用 `LCS_AI_*` 作为项目统一变量名。文献页问答会把当前页面文本、PDF 正文摘录、论文方法说明和算法状态一起提交给后端代理。
 
 未配置 API Key 时，前端会自动降级为本地规则分析，不影响算法计算、动画和文献页面。
 

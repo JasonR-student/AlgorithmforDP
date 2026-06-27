@@ -69,7 +69,7 @@ export function localAnalysis(context = {}, question = '') {
 
   if (mode.includes('文献')) {
     if (context.referenceTitleEn || context.referenceTitleZh) {
-      return `说明：当前论文是《${context.referenceTitleZh || context.referenceTitleEn}》，来源为 ${context.referenceVenue || '开放获取文献'}。它在页面中的使用方式是：${context.referenceMethodUse || context.referenceReplicatedIn || '支撑 LCS/SCS 算法讲解'}。PDF 地址与页面说明已经作为上下文提交。`;
+      return `说明：当前论文是《${context.referenceTitleZh || context.referenceTitleEn}》，来源为 ${context.referenceVenue || '开放获取文献'}。它在页面中的使用方式是：${context.referenceMethodUse || context.referenceReplicatedIn || '支撑 LCS/SCS 算法讲解'}。在线服务启用后，后端会读取 PDF 正文摘录、页面说明和算法状态。`;
     }
     return '说明：参考文献覆盖标准 LCS/SCS、加权变体、近似算法、Hirschberg 线性空间重构和公共子序列扩展问题，可分别支撑算法正确性、空间优化和研究延展三个层面的说明。';
   }

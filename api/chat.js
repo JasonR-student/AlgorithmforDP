@@ -1,7 +1,13 @@
+import { PDFParse } from 'pdf-parse';
+import fs from 'node:fs/promises';
+import path from 'node:path';
+
 const DEFAULT_DAILY_LIMIT = 30;
 const COOKIE_NAME = 'jasonrhan_lcs_ai_usage';
 const DEFAULT_BASE_URL = 'https://ark.cn-beijing.volces.com/api/v3';
 const DEFAULT_MODEL = 'doubao-seed-1-6-250615';
+const PDF_TEXT_LIMIT = 5200;
+const pdfTextCache = new Map();
 
 const sensitivePatterns = [
   /api[_-]?key\s*[:=]\s*[\w-]{12,}/i,
@@ -118,6 +124,65 @@ function normalizeStringArray(value = [], limit = 900) {
   return String(value || '').slice(0, limit);
 }
 
+function compactText(value = '', limit = PDF_TEXT_LIMIT) {
+  return String(value).replace(/\s+/g, ' ').trim().slice(0, limit);
+}
+
+function resolvePdfUrl(context) {
+  const href = String(context.referenceHref || '');
+  if (!href || !href.toLowerCase().endsWith('.pdf')) return '';
+  if (/^https?:\/\//i.test(href)) return href;
+  const base = context.pageUrl || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:4175');
+  return new URL(href, base).toString();
+}
+
+async function readLocalPdfBuffer(href) {
+  if (!href || /^https?:\/\//i.test(href)) return null;
+  const cleanPath = href.replace(/^\/+/, '').replaceAll('\\', '/');
+  if (!cleanPath.startsWith('references/')) return null;
+  return fs.readFile(path.join(process.cwd(), 'public', cleanPath));
+}
+
+async function readRemotePdfBuffer(context) {
+  const url = resolvePdfUrl(context);
+  if (!url) return null;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 9000);
+  try {
+    const response = await fetch(url, { signal: controller.signal });
+    if (!response.ok) return null;
+    return Buffer.from(await response.arrayBuffer());
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function extractPdfText(context) {
+  const href = String(context.referenceHref || '');
+  if (!href) return { text: '', status: 'not_applicable' };
+  if (pdfTextCache.has(href)) return { text: pdfTextCache.get(href), status: 'cached' };
+
+  let buffer = null;
+  try {
+    buffer = (await readLocalPdfBuffer(href)) || (await readRemotePdfBuffer(context));
+  } catch {
+    buffer = null;
+  }
+  if (!buffer) return { text: '', status: 'unavailable' };
+
+  const parser = new PDFParse({ data: buffer });
+  try {
+    const result = await parser.getText();
+    const text = compactText(result.text || '');
+    if (text) pdfTextCache.set(href, text);
+    return { text, status: text ? 'extracted' : 'empty' };
+  } catch {
+    return { text: '', status: 'parse_failed' };
+  } finally {
+    await parser.destroy().catch(() => {});
+  }
+}
+
 /**
  * 清洗前端实验上下文。
  * 所有字符串都裁剪到固定长度，避免大输入或页面信息撑爆代理请求。
@@ -151,6 +216,8 @@ function normalizeContext(context = {}) {
     referenceReplicatedIn: String(context.referenceReplicatedIn || '').slice(0, 720),
     referenceMethodUse: String(context.referenceMethodUse || '').slice(0, 720),
     referenceMethodSteps: normalizeStringArray(context.referenceMethodSteps),
+    pdfText: String(context.pdfText || '').slice(0, PDF_TEXT_LIMIT),
+    pdfTextStatus: String(context.pdfTextStatus || '').slice(0, 60),
   };
 }
 
@@ -247,6 +314,12 @@ export default async function handler(request, response) {
     });
   }
 
+  const pdfContext = await extractPdfText(context);
+  const modelContext = {
+    ...context,
+    pdfText: pdfContext.text,
+    pdfTextStatus: pdfContext.status,
+  };
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 24000);
 
@@ -267,11 +340,11 @@ export default async function handler(request, response) {
           {
             role: 'system',
             content:
-              '你是 LCS&SCS Visualizer 的问答机器人。回答必须使用简洁中文，优先依据当前页面文本、PDF 文献元数据、文献方法说明和算法运行状态。若上下文没有某个细节，要明确说“页面上下文未提供该细节”，不要编造。不要索要或泄露密钥、隐私、未公开信息。',
+              '你是 LCS&SCS Visualizer 的问答机器人。回答必须使用简洁中文，优先依据当前页面文本、PDF 正文摘录、PDF 文献元数据、文献方法说明和算法运行状态。若上下文没有某个细节，要明确说“页面或 PDF 上下文未提供该细节”，不要编造。不要索要或泄露密钥、隐私、未公开信息。',
           },
           {
             role: 'user',
-            content: `当前页面与文献上下文：${JSON.stringify(context)}`,
+            content: `当前页面、PDF 与文献上下文：${JSON.stringify(modelContext)}`,
           },
           ...messages,
         ],
