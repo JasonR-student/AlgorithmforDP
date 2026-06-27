@@ -32,6 +32,15 @@ export default function ReferenceReaderPage({ reference, context }) {
               </a>
             </div>
           </div>
+          <div className="reference-method-panel">
+            <strong>文献方法在本页的使用</strong>
+            <p>{reference.methodUse}</p>
+            <ul>
+              {(reference.methodSteps || []).map((step) => (
+                <li key={step}>{step}</li>
+              ))}
+            </ul>
+          </div>
           <iframe className="pdf-frame reference-pdf-frame" src={reference.href} title={reference.titleZh} />
         </section>
 
@@ -39,10 +48,10 @@ export default function ReferenceReaderPage({ reference, context }) {
           <AIChatBot
             inline
             context={context}
-            title="论文问答"
-            subtitle="可查看来源、核心内容和基础实现"
+            title="论文阅读助手"
+            subtitle="已接入 PDF、页面内容和算法状态"
             initialMode="文献讲解"
-            quickPrompts={['这篇论文从哪里来？', '它主要讲了什么？', '基础代码怎么实现？']}
+            quickPrompts={['这篇论文的方法用在了哪里？', '按当前 PDF 说明核心思路', '和页面动画怎么对应？']}
           />
         </aside>
       </main>

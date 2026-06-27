@@ -10,7 +10,7 @@ export default function ReferencesView({ selectedRef, refMode, onRefModeChange, 
       <div className="section-head">
         <div>
           <h1>参考文献</h1>
-          <p>按主题整理核心论文；点击条目可进入独立阅读页查看 PDF。</p>
+          <p>按主题整理核心论文；点击条目在新页面阅读 PDF，右侧问答会使用当前论文上下文。</p>
         </div>
         <div className="toolbar compact">
           <button type="button" className={`mini-action ${refMode === 'grid' ? 'mini-action-active' : ''}`} onClick={() => onRefModeChange('grid')}>
@@ -28,6 +28,16 @@ export default function ReferencesView({ selectedRef, refMode, onRefModeChange, 
               key={item.id}
               className={`reference-card ${selectedRef.id === item.id ? 'reference-card-active' : ''}`}
               onMouseEnter={() => onSelectRef(item)}
+              onFocus={() => onSelectRef(item)}
+              onClick={() => onOpenReference(item)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                  event.preventDefault();
+                  onOpenReference(item);
+                }
+              }}
+              role="button"
+              tabIndex={0}
             >
               <span className="tag">{item.topic}</span>
               <strong>{item.titleEn}</strong>
@@ -35,11 +45,27 @@ export default function ReferencesView({ selectedRef, refMode, onRefModeChange, 
               <small>
                 {item.authors} · {item.year} · {item.venue}
               </small>
+              <p className="reference-method">{item.methodUse}</p>
+              <p className="reference-note">{item.replicatedIn}</p>
               <div className="reference-actions">
-                <button type="button" className="mini-action mini-action-active" onClick={() => onOpenReference(item)}>
+                <button
+                  type="button"
+                  className="mini-action mini-action-active"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onOpenReference(item);
+                  }}
+                >
                   打开论文
                 </button>
-                <button type="button" className="mini-action" onClick={() => onAskAi(item)}>
+                <button
+                  type="button"
+                  className="mini-action"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onAskAi(item);
+                  }}
+                >
                   提问
                 </button>
               </div>

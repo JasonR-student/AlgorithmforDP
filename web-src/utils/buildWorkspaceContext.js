@@ -3,6 +3,7 @@
  * 所有字段都保持简短，便于后端代理限制输入体积并保护页面性能。
  */
 export function buildWorkspaceContext({ str1, str2, result, selectedRef, readerReference }) {
+  const reference = selectedRef || readerReference || {};
   return {
     str1Length: Array.from(str1).length,
     str2Length: Array.from(str2).length,
@@ -16,11 +17,14 @@ export function buildWorkspaceContext({ str1, str2, result, selectedRef, readerR
     hirschbergMemoryBytes: result?.lcs?.hirschbergMemoryBytes || 0,
     lcsPreview: result?.lcs?.sequence || '',
     scsPreview: result?.scs?.sequence || '',
-    referenceTitleEn: selectedRef?.titleEn || readerReference?.titleEn || '',
-    referenceTitleZh: selectedRef?.titleZh || readerReference?.titleZh || '',
-    referenceAuthors: selectedRef?.authors || readerReference?.authors || '',
-    referenceVenue: selectedRef?.venue || readerReference?.venue || '',
-    referenceSummary: selectedRef?.summary || readerReference?.summary || '',
-    referenceReplicatedIn: selectedRef?.replicatedIn || readerReference?.replicatedIn || '',
+    referenceTitleEn: reference.titleEn || '',
+    referenceTitleZh: reference.titleZh || '',
+    referenceAuthors: reference.authors || '',
+    referenceVenue: reference.venue || '',
+    referenceSummary: reference.summary || '',
+    referenceReplicatedIn: reference.replicatedIn || '',
+    referenceMethodUse: reference.methodUse || '',
+    referenceMethodSteps: reference.methodSteps || [],
+    referenceHref: reference.href || '',
   };
 }

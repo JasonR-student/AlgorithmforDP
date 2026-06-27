@@ -47,16 +47,18 @@ release\LCS_SCS_Visualizer_Vercel_1.0.4.zip
 算法计算不依赖 API Key。在线 AI 问答需要在 Vercel 项目环境变量中配置：
 
 ```text
-LCS_AI_API_KEY=你的模型 API Key
+LCS_AI_API_KEY=你的豆包或 OpenAI 兼容模型 API Key
 ```
 
 可选变量：
 
 ```text
-LCS_AI_MODEL=your-model-name
-LCS_AI_BASE_URL=https://api.example.com
+LCS_AI_MODEL=your-ark-endpoint-or-model-name
+LCS_AI_BASE_URL=https://ark.cn-beijing.volces.com/api/v3
 LCS_AI_DAILY_LIMIT=30
 ```
+
+后端也兼容 `DOUBAO_API_KEY`、`DOUBAO_MODEL`、`DOUBAO_BASE_URL`，但建议优先使用 `LCS_AI_*` 作为项目统一变量名。文献页问答会把当前页面文本、PDF 地址、论文方法说明和算法状态一起提交给后端代理。
 
 未配置 API Key 时，前端会自动降级为本地规则分析，不影响算法计算、动画和文献页面。
 
@@ -101,7 +103,7 @@ npm run package:vercel
 ## 功能入口
 
 - 核心结果：展示 LCS、SCS、Hirschberg 结果、DP 表和序列来源。
-- 可视化动画：支持 DP 填表、LCS 回溯、SCS 构造，并可打开独立动画页。
+- 可视化动画：支持 DP 填表、标准 LCS 回溯、SCS 回溯构造、Hirschberg 线性空间回溯，并可打开独立动画页。
 - 效率分析：批量比较标准 DP、滚动数组和 Hirschberg 的耗时、空间与优化比例。
 - 算法说明：用互动步骤解释状态定义、转移公式、回溯路径和复杂度。
-- 参考文献：紧凑展示论文列表，点击后进入 PDF 阅读 + AI 论文问答页。
+- 参考文献：紧凑展示论文列表，点击后进入 PDF 阅读 + 论文问答页。

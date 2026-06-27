@@ -1,24 +1,58 @@
-/**
- * 向后端问答接口发送对话消息。
- * 前端只发送必要上下文，具体密钥和供应商信息只留在服务端。
- */
-export async function sendChatMessage(messages, context) {
-  const response = await fetch('/api/chat', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ messages, context }),
-  });
-
+async function readJson(response) {
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(payload.error || '问答服务暂时不可用。');
   return payload;
 }
 
-/**
- * 在线服务不可用时的基础说明。
- * 该函数保证课堂演示即使没有密钥也能给出基础解释。
- */
-export function localAnalysis(context, question) {
+function resolveChatScope(context = {}) {
+  if (context.chatScope) return context.chatScope;
+  return String(context.mode || '').includes('文献') || context.referenceHref ? 'lcs_scs_reference' : 'lcs_scs';
+}
+
+function compactText(value = '', limit = 3600) {
+  return String(value).replace(/\s+/g, ' ').trim().slice(0, limit);
+}
+
+function collectPageContext() {
+  const selectors = ['.workspace', '.reference-pdf-panel', '.standalone-header', '.reader-paper-head', '.reference-method-panel'];
+  const text = selectors
+    .map((selector) => document.querySelector(selector)?.innerText || '')
+    .filter(Boolean)
+    .join('\n');
+  const pagePath = `${window.location.pathname}${window.location.search}`;
+  return {
+    pageTitle: document.title,
+    pagePath,
+    pageUrl: window.location.href,
+    pageText: compactText(text || document.body?.innerText || ''),
+  };
+}
+
+export async function fetchChatQuota(context = {}) {
+  const chatScope = resolveChatScope(context);
+  const pagePath = `${window.location.pathname}${window.location.search}`;
+  const query = new URLSearchParams({ scope: chatScope, path: pagePath });
+  return readJson(await fetch(`/api/chat?${query.toString()}`));
+}
+
+export async function sendChatMessage(messages, context = {}) {
+  const chatScope = resolveChatScope(context);
+  const pageContext = collectPageContext();
+  const response = await fetch('/api/chat', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      messages,
+      context: { ...pageContext, ...context, chatScope, pagePath: pageContext.pagePath },
+      chatScope,
+      pagePath: pageContext.pagePath,
+    }),
+  });
+
+  return readJson(response);
+}
+
+export function localAnalysis(context = {}, question = '') {
   const ratio =
     context.standardMemoryBytes > 0
       ? ((context.optimizedMemoryBytes / context.standardMemoryBytes) * 100).toFixed(3)
@@ -35,7 +69,7 @@ export function localAnalysis(context, question) {
 
   if (mode.includes('文献')) {
     if (context.referenceTitleEn || context.referenceTitleZh) {
-      return `说明：当前论文是《${context.referenceTitleZh || context.referenceTitleEn}》，来源为 ${context.referenceVenue || '开放获取文献'}。它的核心价值是：${context.referenceSummary || '补充 LCS/SCS 相关算法背景'}。基础实现可从标准 DP 表、回溯路径和空间优化三个层次展开，再结合页面中的 LCS、SCS 与 Hirschberg 对照说明。`;
+      return `说明：当前论文是《${context.referenceTitleZh || context.referenceTitleEn}》，来源为 ${context.referenceVenue || '开放获取文献'}。它在页面中的使用方式是：${context.referenceMethodUse || context.referenceReplicatedIn || '支撑 LCS/SCS 算法讲解'}。PDF 地址与页面说明已经作为上下文提交。`;
     }
     return '说明：参考文献覆盖标准 LCS/SCS、加权变体、近似算法、Hirschberg 线性空间重构和公共子序列扩展问题，可分别支撑算法正确性、空间优化和研究延展三个层面的说明。';
   }

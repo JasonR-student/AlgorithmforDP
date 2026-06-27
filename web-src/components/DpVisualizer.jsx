@@ -2,9 +2,33 @@ import { useEffect, useMemo, useState } from 'react';
 
 const modes = [
   { id: 'fill', label: 'DP 填表', icon: 'DP' },
-  { id: 'backtrack', label: 'LCS 回溯', icon: 'BT' },
-  { id: 'scs', label: 'SCS 构造', icon: 'SC' },
+  { id: 'backtrack-lcs', label: '标准回溯', icon: 'LCS' },
+  { id: 'backtrack-scs', label: 'SCS 回溯', icon: 'SCS' },
+  { id: 'backtrack-hirschberg', label: 'Hirschberg 回溯', icon: 'HB' },
 ];
+
+const modeMeta = {
+  fill: {
+    stage: '二维 DP',
+    result: 'LCS 长度表',
+    method: '按前缀子问题填表，是 LCS/SCS 后续三种回溯的共同基础。',
+  },
+  'backtrack-lcs': {
+    stage: '标准 LCS',
+    result: '公共子序列',
+    method: '对应“Maximal Common Subsequence Algorithms”等公共子序列文献：从 dp[m][n] 逆向选择一条公共子序列路径。',
+  },
+  'backtrack-scs': {
+    stage: 'SCS 构造',
+    result: '最短公共超序列',
+    method: '对应加权 SCS 和极小公共超序列文献：沿 LCS 表回溯，公共字符保留一次，专属字符直接并入。',
+  },
+  'backtrack-hirschberg': {
+    stage: 'Hirschberg',
+    result: '线性空间重构',
+    method: '对应 Hirschberg 系列文献：二分 S1，用正反向滚动 DP 定位分割点，再递归拼接 LCS。',
+  },
+};
 
 /**
  * 把 DP 坐标转成 Set 可用的字符串 key。
@@ -70,39 +94,131 @@ function backtrackRule(result, point, nextPoint) {
 }
 
 /**
- * 构造 LCS 回溯动画时间线。
+ * 构造标准 LCS 回溯动画时间线。
  * 只保留当前展示表格范围内的点，避免超大输入导致界面负担过重。
  */
-function buildBacktrackTimeline(result, rows, cols) {
+function buildClassicBacktrackTimeline(result, rows, cols) {
   const path = result?.lcs?.backtrackPath || [];
   return path
     .filter((point) => point.i < rows && point.j < cols)
     .map((point, index, visiblePath) => ({
       ...point,
-      phase: 'backtrack',
+      phase: 'backtrack-lcs',
       rule: backtrackRule(result, point, visiblePath[index + 1]),
     }));
 }
 
 /**
- * 构造 SCS 字符拼接动画时间线。
- * 每个字符都带来源标记，用于解释公共字符为什么只保留一次。
+ * 沿 LCS 表反向构造 SCS。
+ * 和标准 LCS 回溯不同，遇到非公共字符时不会丢弃，而是并入超序列。
  */
-function buildScsTimeline(result) {
-  const chars = Array.from(result?.scs?.sequence || '');
-  const sources = result?.scs?.sources || [];
-  return chars.map((ch, index) => ({
-    phase: 'scs',
-    ch,
-    index,
-    source: sources[index] || 'common',
-    rule:
-      sources[index] === 'common'
-        ? `公共字符 ${ch}：在 SCS 中只保留一次。`
-        : sources[index] === 's1'
-          ? `字符 ${ch} 只来自 S1：直接并入超序列。`
-          : `字符 ${ch} 只来自 S2：直接并入超序列。`,
-  }));
+function buildScsBacktrackTimeline(result, rows, cols) {
+  const table = result?.lcs?.dpTable || [];
+  const str1 = result?.lcs?.str1 || '';
+  const str2 = result?.lcs?.str2 || '';
+  const steps = [];
+  let i = Array.from(str1).length;
+  let j = Array.from(str2).length;
+  const aChars = Array.from(str1);
+  const bChars = Array.from(str2);
+
+  while (i > 0 || j > 0) {
+    const point = { i, j };
+    if (i === 0) {
+      const ch = bChars[j - 1];
+      steps.push({
+        ...point,
+        phase: 'backtrack-scs',
+        ch,
+        source: 's2',
+        rule: `S1 已到边界：把 S2 剩余字符 ${ch} 放入 SCS，并向左移动。`,
+      });
+      j -= 1;
+      continue;
+    }
+    if (j === 0) {
+      const ch = aChars[i - 1];
+      steps.push({
+        ...point,
+        phase: 'backtrack-scs',
+        ch,
+        source: 's1',
+        rule: `S2 已到边界：把 S1 剩余字符 ${ch} 放入 SCS，并向上移动。`,
+      });
+      i -= 1;
+      continue;
+    }
+
+    const a = aChars[i - 1];
+    const b = bChars[j - 1];
+    if (a === b) {
+      steps.push({
+        ...point,
+        phase: 'backtrack-scs',
+        ch: a,
+        source: 'common',
+        rule: `公共字符 ${a}：SCS 中只保留一次，沿左上方向回溯。`,
+      });
+      i -= 1;
+      j -= 1;
+      continue;
+    }
+
+    const up = table[i - 1]?.[j] ?? 0;
+    const left = table[i]?.[j - 1] ?? 0;
+    if (up >= left) {
+      steps.push({
+        ...point,
+        phase: 'backtrack-scs',
+        ch: a,
+        source: 's1',
+        rule: `dp[i-1][j] 不小于 dp[i][j-1]：保留 S1 字符 ${a}，继续向上回溯。`,
+      });
+      i -= 1;
+    } else {
+      steps.push({
+        ...point,
+        phase: 'backtrack-scs',
+        ch: b,
+        source: 's2',
+        rule: `左侧状态更适合保持公共结构：保留 S2 字符 ${b}，继续向左回溯。`,
+      });
+      j -= 1;
+    }
+  }
+
+  return steps.filter((point) => point.i < rows && point.j < cols);
+}
+
+function locateSequencePath(str1 = '', str2 = '', sequence = '') {
+  const aChars = Array.from(str1);
+  const bChars = Array.from(str2);
+  let i = 0;
+  let j = 0;
+  return Array.from(sequence).map((ch) => {
+    while (i < aChars.length && aChars[i] !== ch) i += 1;
+    while (j < bChars.length && bChars[j] !== ch) j += 1;
+    const point = { i: Math.min(i + 1, aChars.length), j: Math.min(j + 1, bChars.length), ch };
+    i += 1;
+    j += 1;
+    return point;
+  });
+}
+
+/**
+ * 构造 Hirschberg 讲解时间线。
+ * Wasm 返回最终序列，这里把序列映射回表格坐标，用动画展示二分、双向滚动 DP 和递归拼接的核心过程。
+ */
+function buildHirschbergTimeline(result, rows, cols) {
+  const sequence = result?.lcs?.hirschbergSequence || result?.lcs?.sequence || '';
+  const points = locateSequencePath(result?.lcs?.str1, result?.lcs?.str2, sequence);
+  return points
+    .filter((point) => point.i < rows && point.j < cols)
+    .map((point, index) => ({
+      ...point,
+      phase: 'backtrack-hirschberg',
+      rule: `Hirschberg 输出第 ${index + 1} 个字符 ${point.ch}：二分 S1 后用正反向滚动 DP 定位分割点，再在子问题中完成匹配。`,
+    }));
 }
 
 /**
@@ -115,9 +231,16 @@ function getSourceLabel(source) {
   return 'S2 专属';
 }
 
+function getStageLabel(mode, current, step, timelines) {
+  if (mode === 'backtrack-scs') return `SCS 回溯第 ${Math.min(step + 1, timelines['backtrack-scs'].length)} 步`;
+  if (mode === 'backtrack-hirschberg') return `Hirschberg 匹配第 ${Math.min(step + 1, timelines['backtrack-hirschberg'].length)} 步`;
+  if (current) return `dp[${current.i}][${current.j}]`;
+  return '无';
+}
+
 /**
  * 动态规划动画组件。
- * 支持 DP 填表、LCS 回溯、SCS 构造三种模式，并能打开独立大表格页面。
+ * 支持 DP 填表、标准 LCS 回溯、SCS 回溯和 Hirschberg 线性空间回溯。
  */
 export default function DpVisualizer({ result, onOpenStandalone, standalone = false }) {
   const [mode, setMode] = useState('fill');
@@ -131,11 +254,14 @@ export default function DpVisualizer({ result, onOpenStandalone, standalone = fa
   const cols = Math.min(table[0]?.length || 0, 70);
 
   const timelines = useMemo(() => {
-    if (!result || !table.length) return { fill: [], backtrack: [], scs: [] };
+    if (!result || !table.length) {
+      return { fill: [], 'backtrack-lcs': [], 'backtrack-scs': [], 'backtrack-hirschberg': [] };
+    }
     return {
       fill: buildFillTimeline(lcs.fillSteps || [], rows, cols),
-      backtrack: buildBacktrackTimeline(result, rows, cols),
-      scs: buildScsTimeline(result),
+      'backtrack-lcs': buildClassicBacktrackTimeline(result, rows, cols),
+      'backtrack-scs': buildScsBacktrackTimeline(result, rows, cols),
+      'backtrack-hirschberg': buildHirschbergTimeline(result, rows, cols),
     };
   }, [cols, lcs, result, rows, table.length]);
 
@@ -143,6 +269,7 @@ export default function DpVisualizer({ result, onOpenStandalone, standalone = fa
   const maxStep = Math.max(0, timeline.length - 1);
   const current = timeline[Math.min(step, maxStep)];
   const max = Math.max(1, lcs?.length || 1);
+  const meta = modeMeta[mode] || modeMeta.fill;
 
   const revealedFill = useMemo(() => {
     if (mode !== 'fill') return new Set();
@@ -150,11 +277,28 @@ export default function DpVisualizer({ result, onOpenStandalone, standalone = fa
   }, [mode, step, timeline]);
 
   const revealedPath = useMemo(() => {
-    const source = mode === 'backtrack' ? timeline : timelines.backtrack.slice(0, Math.min(step + 1, timelines.backtrack.length));
-    return new Set(source.slice(0, step + 1).filter((item) => Number.isFinite(item.i)).map(cellKey));
-  }, [mode, step, timeline, timelines.backtrack]);
+    if (mode === 'fill') return new Set();
+    return new Set(timeline.slice(0, step + 1).filter((item) => Number.isFinite(item.i)).map(cellKey));
+  }, [mode, step, timeline]);
 
-  const constructedScs = useMemo(() => timelines.scs.slice(0, mode === 'scs' ? step + 1 : 0), [mode, step, timelines.scs]);
+  const constructedScs = useMemo(() => {
+    if (mode !== 'backtrack-scs') return '';
+    return timeline
+      .slice(0, step + 1)
+      .filter((item) => item.ch)
+      .map((item) => item.ch)
+      .reverse()
+      .join('');
+  }, [mode, step, timeline]);
+
+  const hirschbergPrefix = useMemo(() => {
+    if (mode !== 'backtrack-hirschberg') return '';
+    return timeline
+      .slice(0, step + 1)
+      .filter((item) => item.ch)
+      .map((item) => item.ch)
+      .join('');
+  }, [mode, step, timeline]);
 
   useEffect(() => {
     if (!playing) return undefined;
@@ -190,7 +334,7 @@ export default function DpVisualizer({ result, onOpenStandalone, standalone = fa
       <div className="section-head">
         <div>
           <h2>动态规划可视化动画</h2>
-          <p>从边界 0 状态开始构建 DP 表，并演示 LCS 回溯与 SCS 构造过程。</p>
+          <p>从边界 0 状态开始构建 DP 表，并演示标准 LCS、SCS 与 Hirschberg 三种回溯路径。</p>
         </div>
         <div className="action-row">
           {onOpenStandalone ? (
@@ -249,23 +393,27 @@ export default function DpVisualizer({ result, onOpenStandalone, standalone = fa
         </div>
         <div>
           <strong>坐标/阶段</strong>
+          <span>{getStageLabel(mode, current, step, timelines)}</span>
+        </div>
+        <div>
+          <strong>{meta.result}</strong>
           <span>
-            {mode === 'scs'
-              ? `SCS 第 ${Math.min(step + 1, timelines.scs.length)} 个字符`
-              : current
-                ? `dp[${current.i}][${current.j}]`
-                : '无'}
+            {mode === 'backtrack-scs'
+              ? constructedScs || '等待构造'
+              : mode === 'backtrack-hirschberg'
+                ? hirschbergPrefix || '等待匹配'
+                : result.lcs.sequence || '空串'}
           </span>
         </div>
         <div>
-          <strong>结果片段</strong>
-          <span>{mode === 'scs' ? constructedScs.map((item) => item.ch).join('') || '等待构造' : result.lcs.sequence || '空串'}</span>
+          <strong>文献方法</strong>
+          <span>{meta.method}</span>
         </div>
       </div>
 
-      {mode === 'scs' ? (
-        <div className="scs-construction">
-          {timelines.scs.map((item, index) => (
+      {mode === 'backtrack-scs' ? (
+        <div className="scs-construction" aria-label="SCS 回溯取字符顺序">
+          {timelines['backtrack-scs'].map((item, index) => (
             <span
               key={`${item.ch}-${index}`}
               className={`char-token ${index <= step ? item.source : 'pending-char'} ${index === step ? 'active-char' : ''}`}
