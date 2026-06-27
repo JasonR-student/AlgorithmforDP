@@ -1,4 +1,3 @@
-import pdfParse from 'pdf-parse/lib/pdf-parse.js';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
@@ -8,6 +7,7 @@ const DEFAULT_BASE_URL = 'https://ark.cn-beijing.volces.com/api/v3';
 const DEFAULT_MODEL = 'doubao-seed-1-6-250615';
 const PDF_TEXT_LIMIT = 5200;
 const pdfTextCache = new Map();
+let pdfParserPromise = null;
 
 const sensitivePatterns = [
   /api[_-]?key\s*[:=]\s*[\w-]{12,}/i,
@@ -157,6 +157,14 @@ async function readRemotePdfBuffer(context) {
   }
 }
 
+async function loadPdfParser() {
+  process.noDeprecation = true;
+  if (!pdfParserPromise) {
+    pdfParserPromise = import('pdf-parse/lib/pdf-parse.js').then((module) => module.default || module);
+  }
+  return pdfParserPromise;
+}
+
 async function extractPdfText(context) {
   const href = String(context.referenceHref || '');
   if (!href) return { text: '', status: 'not_applicable' };
@@ -171,6 +179,7 @@ async function extractPdfText(context) {
   if (!buffer) return { text: '', status: 'unavailable' };
 
   try {
+    const pdfParse = await loadPdfParser();
     const result = await pdfParse(buffer);
     const text = compactText(result.text || '');
     if (text) pdfTextCache.set(href, text);
