@@ -1,4 +1,4 @@
-import { PDFParse } from 'pdf-parse';
+import pdfParse from 'pdf-parse/lib/pdf-parse.js';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
@@ -170,16 +170,13 @@ async function extractPdfText(context) {
   }
   if (!buffer) return { text: '', status: 'unavailable' };
 
-  const parser = new PDFParse({ data: buffer });
   try {
-    const result = await parser.getText();
+    const result = await pdfParse(buffer);
     const text = compactText(result.text || '');
     if (text) pdfTextCache.set(href, text);
     return { text, status: text ? 'extracted' : 'empty' };
   } catch {
     return { text: '', status: 'parse_failed' };
-  } finally {
-    await parser.destroy().catch(() => {});
   }
 }
 
