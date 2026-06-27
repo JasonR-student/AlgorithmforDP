@@ -4,6 +4,12 @@ async function readJson(response) {
   return payload;
 }
 
+function apiUrl(path) {
+  const configuredBase = window.__LCS_SCS_CHAT_API_BASE__ || '';
+  const base = configuredBase || (window.location.protocol === 'file:' ? 'https://stringdpproject.vercel.app' : '');
+  return `${base.replace(/\/+$/, '')}${path}`;
+}
+
 function resolveChatScope(context = {}) {
   if (context.chatScope) return context.chatScope;
   return String(context.mode || '').includes('文献') || context.referenceHref ? 'lcs_scs_reference' : 'lcs_scs';
@@ -31,14 +37,14 @@ function collectPageContext() {
 export async function fetchChatQuota(context = {}) {
   const chatScope = resolveChatScope(context);
   const pagePath = `${window.location.pathname}${window.location.search}`;
-  const query = new URLSearchParams({ scope: chatScope, path: pagePath });
-  return readJson(await fetch(`/api/chat?${query.toString()}`));
+  const query = new URLSearchParams({ scope: chatScope, path: pagePath, mode: context.mode || '' });
+  return readJson(await fetch(apiUrl(`/api/chat?${query.toString()}`)));
 }
 
 export async function sendChatMessage(messages, context = {}) {
   const chatScope = resolveChatScope(context);
   const pageContext = collectPageContext();
-  const response = await fetch('/api/chat', {
+  const response = await fetch(apiUrl('/api/chat'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({

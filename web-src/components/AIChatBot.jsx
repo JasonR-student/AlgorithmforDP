@@ -94,13 +94,25 @@ export default function AIChatBot({
 
     try {
       const result = await sendChatMessage(nextMessages, scopedContext);
-      setMessages((current) => [...current, { role: 'assistant', content: result.reply }]);
+      setMessages((current) => [
+        ...current,
+        {
+          role: 'assistant',
+          content: result.reply,
+          providerLabel: result.providerLabel || result.provider || '在线服务',
+          model: result.model || '',
+        },
+      ]);
       setHint(quotaHint(result, title));
       if (result.configured === false) setHint(`${quotaHint(result, title)}，当前显示基础说明`);
     } catch {
       setMessages((current) => [
         ...current,
-        { role: 'assistant', content: `${localAnalysis(scopedContext, trimmed)}\n\n暂时无法连接在线服务，已切换为基础说明。` },
+        {
+          role: 'assistant',
+          content: `${localAnalysis(scopedContext, trimmed)}\n\n暂时无法连接在线服务，已切换为基础说明。`,
+          providerLabel: '基础说明',
+        },
       ]);
       setHint('当前显示基础说明');
     } finally {
@@ -158,16 +170,22 @@ export default function AIChatBot({
         {messages.map((message, index) => (
           <div key={`${message.role}-${index}`} className={`chat-row ${message.role === 'user' ? 'chat-row-user' : ''}`}>
             {message.role === 'assistant' ? <RobotAvatar small /> : null}
-            <p className={`chat-bubble ${message.role === 'user' ? 'chat-bubble-user' : 'chat-bubble-ai'}`}>{message.content}</p>
+            <div className={`chat-message-stack ${message.role === 'user' ? 'chat-message-stack-user' : ''}`}>
+              <p className={`chat-bubble ${message.role === 'user' ? 'chat-bubble-user' : 'chat-bubble-ai'}`}>{message.content}</p>
+              {message.role === 'assistant' && message.providerLabel ? (
+                <span className="chat-provider-note">
+                  回答来源：{message.providerLabel}
+                  {message.model ? ` · ${message.model}` : ''}
+                </span>
+              ) : null}
+            </div>
           </div>
         ))}
         {isTyping ? (
           <div className="chat-row">
             <RobotAvatar small />
             <div className="chat-bubble chat-bubble-ai typing">
-              <span className="typing-dot" />
-              <span className="typing-dot delay-150" />
-              <span className="typing-dot delay-300" />
+              <span className="typing-text">思考中...</span>
             </div>
           </div>
         ) : null}

@@ -38,8 +38,8 @@ export function useVisualizerState() {
   const fileInputRef = useRef(null);
 
   const context = useMemo(
-    () => buildWorkspaceContext({ str1, str2, result, selectedRef, readerReference }),
-    [readerReference, result, selectedRef, str1, str2],
+    () => buildWorkspaceContext({ str1, str2, result, selectedRef, active }),
+    [active, result, selectedRef, str1, str2],
   );
 
   /**

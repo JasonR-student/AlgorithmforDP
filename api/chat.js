@@ -2,13 +2,19 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 
 const DEFAULT_DAILY_LIMIT = 30;
-const COOKIE_NAME = 'jasonrhan_lcs_ai_usage';
-const DEFAULT_BASE_URL = 'https://ark.cn-beijing.volces.com/api/v3';
-const DEFAULT_MODEL = 'doubao-seed-1-6-250615';
+const DEFAULT_DOUBAO_BASE_URL = 'https://ark.cn-beijing.volces.com/api/v3';
+const DEFAULT_DOUBAO_MODEL = 'doubao-seed-1-6-250615';
+const DEFAULT_DEEPSEEK_BASE_URL = 'https://api.deepseek.com';
+const DEFAULT_DEEPSEEK_MODEL = 'deepseek-v4-flash';
 const PDF_TEXT_LIMIT = 5200;
 const PDF_PARSE_MODULE = 'pdf-parse/lib/pdf-parse.js';
+const SHANGHAI_OFFSET_MS = 8 * 60 * 60 * 1000;
+const DAY_MS = 24 * 60 * 60 * 1000;
 const pdfTextCache = new Map();
 let pdfParserPromise = null;
+
+const memoryUsage = globalThis.__lcsScsAiUsage || new Map();
+globalThis.__lcsScsAiUsage = memoryUsage;
 
 const sensitivePatterns = [
   /api[_-]?key\s*[:=]\s*[\w-]{12,}/i,
@@ -24,8 +30,20 @@ const scopeLabels = {
   lcs_scs_reference: '文献阅读问答',
 };
 
+const providerLabels = {
+  doubao: '豆包',
+  deepseek: 'DeepSeek',
+  local: '基础说明',
+};
+
 function firstEnv(...names) {
   return names.map((name) => process.env[name]).find(Boolean);
+}
+
+function setCorsHeaders(response) {
+  response.setHeader('Access-Control-Allow-Origin', '*');
+  response.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  response.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 }
 
 function resolveScope(value = 'lcs_scs') {
@@ -33,22 +51,10 @@ function resolveScope(value = 'lcs_scs') {
   return scope || 'lcs_scs';
 }
 
-function getCookieName(scope) {
-  return scope === 'lcs_scs' ? COOKIE_NAME : `${COOKIE_NAME}_${scope}`;
-}
-
-/**
- * 检查用户输入是否疑似包含敏感信息。
- * 命中时拒绝请求，避免把密钥、证件号或银行卡号转发给外部服务。
- */
 function containsSensitiveInfo(value = '') {
   return sensitivePatterns.some((pattern) => pattern.test(value));
 }
 
-/**
- * 生成上海时区的日期 key。
- * 每日限额按课程演示常用的本地日期切分，而不是按服务器所在时区切分。
- */
 function getShanghaiDateKey() {
   return new Intl.DateTimeFormat('en-CA', {
     timeZone: 'Asia/Shanghai',
@@ -58,58 +64,69 @@ function getShanghaiDateKey() {
   }).format(new Date());
 }
 
-/**
- * 解析 Cookie 请求头。
- * 这里不依赖第三方库，保证 Vercel Serverless Function 打包足够轻。
- */
-function parseCookies(header = '') {
-  return Object.fromEntries(
-    header
-      .split(';')
-      .map((item) => item.trim())
-      .filter(Boolean)
-      .map((item) => {
-        const index = item.indexOf('=');
-        if (index === -1) return [item, ''];
-        return [item.slice(0, index), decodeURIComponent(item.slice(index + 1))];
-      }),
-  );
+function secondsUntilShanghaiMidnight() {
+  const shanghaiNow = Date.now() + SHANGHAI_OFFSET_MS;
+  const nextMidnight = Math.floor(shanghaiNow / DAY_MS) * DAY_MS + DAY_MS;
+  return Math.max(60, Math.ceil((nextMidnight - shanghaiNow) / 1000));
 }
 
-/**
- * 从 Cookie 读取今日已使用次数。
- * Cookie 无效或跨日期时自动归零。
- */
-function readUsage(request, scope) {
-  const date = getShanghaiDateKey();
-  const raw = parseCookies(request.headers.cookie || '')[getCookieName(scope)];
+function dailyUsageKey() {
+  return `lcs_scs_ai_usage:${getShanghaiDateKey()}`;
+}
+
+function getRedisConfig() {
+  const url = firstEnv('KV_REST_API_URL', 'UPSTASH_REDIS_REST_URL');
+  const token = firstEnv('KV_REST_API_TOKEN', 'UPSTASH_REDIS_REST_TOKEN');
+  return url && token ? { url: url.replace(/\/+$/, ''), token } : null;
+}
+
+async function redisCommand(command) {
+  const config = getRedisConfig();
+  if (!config) return null;
+  const response = await fetch(config.url, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${config.token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(command),
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok || payload.error) throw new Error(payload.error || 'Redis request failed');
+  return payload.result;
+}
+
+async function readUsage() {
+  const key = dailyUsageKey();
   try {
-    const parsed = raw ? JSON.parse(raw) : null;
-    if (parsed?.date === date && Number.isFinite(Number(parsed?.count))) {
-      return { date, count: Number(parsed.count) };
+    const value = await redisCommand(['GET', key]);
+    if (value !== null && value !== undefined) {
+      return { date: getShanghaiDateKey(), count: Number(value || 0), storage: 'vercel-kv' };
     }
+    if (getRedisConfig()) return { date: getShanghaiDateKey(), count: 0, storage: 'vercel-kv' };
   } catch {
-    return { date, count: 0 };
+    // Fall through to server memory so the chat remains usable if KV is temporarily unavailable.
   }
-  return { date, count: 0 };
+  return { date: getShanghaiDateKey(), count: Number(memoryUsage.get(key) || 0), storage: 'server-memory' };
 }
 
-/**
- * 写回今日使用次数。
- * Vercel 环境下自动加 Secure，普通本地预览则保持可调试。
- */
-function writeUsage(response, usage, scope) {
-  const secure = process.env.VERCEL ? '; Secure' : '';
-  response.setHeader(
-    'Set-Cookie',
-    `${getCookieName(scope)}=${encodeURIComponent(JSON.stringify(usage))}; Path=/; Max-Age=86400; HttpOnly; SameSite=Lax${secure}`,
-  );
+async function incrementUsage() {
+  const key = dailyUsageKey();
+  const ttl = secondsUntilShanghaiMidnight();
+  if (getRedisConfig()) {
+    try {
+      const count = Number(await redisCommand(['INCR', key]));
+      await redisCommand(['EXPIRE', key, ttl]);
+      return { date: getShanghaiDateKey(), count, storage: 'vercel-kv' };
+    } catch {
+      // Fall through to server memory so a transient KV error does not block chat.
+    }
+  }
+  const count = Number(memoryUsage.get(key) || 0) + 1;
+  memoryUsage.set(key, count);
+  return { date: getShanghaiDateKey(), count, storage: 'server-memory' };
 }
 
-/**
- * 清洗前端传来的消息列表。
- * 只保留最近少量 user/assistant 消息，防止请求体无限增长。
- */
 function normalizeMessages(messages = []) {
   return messages
     .filter((message) => ['user', 'assistant'].includes(message.role))
@@ -127,6 +144,40 @@ function normalizeStringArray(value = [], limit = 900) {
 
 function compactText(value = '', limit = PDF_TEXT_LIMIT) {
   return String(value).replace(/\s+/g, ' ').trim().slice(0, limit);
+}
+
+function normalizeContext(context = {}) {
+  return {
+    chatScope: resolveScope(context.chatScope),
+    mode: String(context.mode || '综合分析').slice(0, 60),
+    pageTitle: String(context.pageTitle || '').slice(0, 160),
+    pagePath: String(context.pagePath || '').slice(0, 220),
+    pageUrl: String(context.pageUrl || '').slice(0, 300),
+    pageText: String(context.pageText || '').slice(0, 3600),
+    str1Length: Number(context.str1Length || 0),
+    str2Length: Number(context.str2Length || 0),
+    lcsLength: Number(context.lcsLength || 0),
+    scsLength: Number(context.scsLength || 0),
+    standardTimeUs: Number(context.standardTimeUs || 0),
+    optimizedTimeUs: Number(context.optimizedTimeUs || 0),
+    hirschbergTimeUs: Number(context.hirschbergTimeUs || 0),
+    standardMemoryBytes: Number(context.standardMemoryBytes || 0),
+    optimizedMemoryBytes: Number(context.optimizedMemoryBytes || 0),
+    hirschbergMemoryBytes: Number(context.hirschbergMemoryBytes || 0),
+    lcsPreview: String(context.lcsPreview || '').slice(0, 300),
+    scsPreview: String(context.scsPreview || '').slice(0, 300),
+    referenceTitleEn: String(context.referenceTitleEn || '').slice(0, 240),
+    referenceTitleZh: String(context.referenceTitleZh || '').slice(0, 240),
+    referenceAuthors: String(context.referenceAuthors || '').slice(0, 240),
+    referenceVenue: String(context.referenceVenue || '').slice(0, 160),
+    referenceHref: String(context.referenceHref || '').slice(0, 300),
+    referenceSummary: String(context.referenceSummary || '').slice(0, 720),
+    referenceReplicatedIn: String(context.referenceReplicatedIn || '').slice(0, 720),
+    referenceMethodUse: String(context.referenceMethodUse || '').slice(0, 720),
+    referenceMethodSteps: normalizeStringArray(context.referenceMethodSteps),
+    pdfText: String(context.pdfText || '').slice(0, PDF_TEXT_LIMIT),
+    pdfTextStatus: String(context.pdfTextStatus || '').slice(0, 60),
+  };
 }
 
 function resolvePdfUrl(context) {
@@ -191,98 +242,90 @@ async function extractPdfText(context) {
   }
 }
 
-/**
- * 清洗前端实验上下文。
- * 所有字符串都裁剪到固定长度，避免大输入或页面信息撑爆代理请求。
- */
-function normalizeContext(context = {}) {
-  return {
-    chatScope: resolveScope(context.chatScope),
-    mode: String(context.mode || '综合分析').slice(0, 60),
-    pageTitle: String(context.pageTitle || '').slice(0, 160),
-    pagePath: String(context.pagePath || '').slice(0, 220),
-    pageUrl: String(context.pageUrl || '').slice(0, 300),
-    pageText: String(context.pageText || '').slice(0, 3600),
-    str1Length: Number(context.str1Length || 0),
-    str2Length: Number(context.str2Length || 0),
-    lcsLength: Number(context.lcsLength || 0),
-    scsLength: Number(context.scsLength || 0),
-    standardTimeUs: Number(context.standardTimeUs || 0),
-    optimizedTimeUs: Number(context.optimizedTimeUs || 0),
-    hirschbergTimeUs: Number(context.hirschbergTimeUs || 0),
-    standardMemoryBytes: Number(context.standardMemoryBytes || 0),
-    optimizedMemoryBytes: Number(context.optimizedMemoryBytes || 0),
-    hirschbergMemoryBytes: Number(context.hirschbergMemoryBytes || 0),
-    lcsPreview: String(context.lcsPreview || '').slice(0, 300),
-    scsPreview: String(context.scsPreview || '').slice(0, 300),
-    referenceTitleEn: String(context.referenceTitleEn || '').slice(0, 240),
-    referenceTitleZh: String(context.referenceTitleZh || '').slice(0, 240),
-    referenceAuthors: String(context.referenceAuthors || '').slice(0, 240),
-    referenceVenue: String(context.referenceVenue || '').slice(0, 160),
-    referenceHref: String(context.referenceHref || '').slice(0, 300),
-    referenceSummary: String(context.referenceSummary || '').slice(0, 720),
-    referenceReplicatedIn: String(context.referenceReplicatedIn || '').slice(0, 720),
-    referenceMethodUse: String(context.referenceMethodUse || '').slice(0, 720),
-    referenceMethodSteps: normalizeStringArray(context.referenceMethodSteps),
-    pdfText: String(context.pdfText || '').slice(0, PDF_TEXT_LIMIT),
-    pdfTextStatus: String(context.pdfTextStatus || '').slice(0, 60),
-  };
-}
-
-/**
- * 统一 JSON 响应写法。
- * 减少每个分支重复 status().json() 的样板代码。
- */
-function json(response, status, payload) {
-  response.status(status).json(payload);
-}
-
 function getDailyLimit() {
   const value = Number(process.env.LCS_AI_DAILY_LIMIT || process.env.JASONRHAN_AI_DAILY_LIMIT || DEFAULT_DAILY_LIMIT);
   return Number.isFinite(value) && value > 0 ? value : DEFAULT_DAILY_LIMIT;
 }
 
-function getModelConfig() {
+function chooseProvider(context = {}) {
+  const mode = String(context.mode || '');
+  if (mode.includes('文献') || context.referenceHref) return 'doubao';
+  return 'deepseek';
+}
+
+function getProviderConfig(provider) {
+  if (provider === 'deepseek') {
+    return {
+      provider: 'deepseek',
+      providerLabel: providerLabels.deepseek,
+      apiKey: firstEnv('LCS_DEEPSEEK_API_KEY', 'DEEPSEEK_API_KEY', 'DEEPSEEK_AI_API_KEY', 'JASONRHAN_DEEPSEEK_API_KEY'),
+      baseUrl: (firstEnv('LCS_DEEPSEEK_BASE_URL', 'DEEPSEEK_BASE_URL', 'DEEPSEEK_AI_BASE_URL', 'JASONRHAN_DEEPSEEK_BASE_URL') || DEFAULT_DEEPSEEK_BASE_URL).replace(/\/+$/, ''),
+      model: firstEnv('LCS_DEEPSEEK_MODEL', 'DEEPSEEK_MODEL', 'DEEPSEEK_AI_MODEL', 'JASONRHAN_DEEPSEEK_MODEL') || DEFAULT_DEEPSEEK_MODEL,
+    };
+  }
   return {
-    apiKey: firstEnv('LCS_AI_API_KEY', 'DOUBAO_API_KEY', 'ARK_API_KEY', 'VOLCENGINE_API_KEY', 'JASONRHAN_DEEPSEEK_API_KEY'),
-    baseUrl: (firstEnv('LCS_AI_BASE_URL', 'DOUBAO_BASE_URL', 'ARK_BASE_URL', 'VOLCENGINE_BASE_URL', 'JASONRHAN_DEEPSEEK_BASE_URL') || DEFAULT_BASE_URL).replace(/\/+$/, ''),
-    model: firstEnv('LCS_AI_MODEL', 'DOUBAO_MODEL', 'ARK_MODEL', 'VOLCENGINE_MODEL', 'JASONRHAN_DEEPSEEK_MODEL') || DEFAULT_MODEL,
-    provider: firstEnv('LCS_AI_PROVIDER', 'DOUBAO_PROVIDER', 'ARK_PROVIDER') || 'doubao-compatible',
+    provider: 'doubao',
+    providerLabel: providerLabels.doubao,
+    apiKey: firstEnv('LCS_AI_API_KEY', 'DOUBAO_API_KEY', 'ARK_API_KEY', 'VOLCENGINE_API_KEY'),
+    baseUrl: (firstEnv('LCS_AI_BASE_URL', 'DOUBAO_BASE_URL', 'ARK_BASE_URL', 'VOLCENGINE_BASE_URL') || DEFAULT_DOUBAO_BASE_URL).replace(/\/+$/, ''),
+    model: firstEnv('LCS_AI_MODEL', 'DOUBAO_MODEL', 'ARK_MODEL', 'VOLCENGINE_MODEL') || DEFAULT_DOUBAO_MODEL,
   };
 }
 
-function usagePayload(request, scope) {
-  const dailyLimit = getDailyLimit();
-  const usage = readUsage(request, scope);
-  const { apiKey, model, provider } = getModelConfig();
+function providerStatus() {
+  const doubao = getProviderConfig('doubao');
+  const deepseek = getProviderConfig('deepseek');
   return {
-    configured: Boolean(apiKey),
+    doubao: { configured: Boolean(doubao.apiKey), model: doubao.model, providerLabel: doubao.providerLabel },
+    deepseek: { configured: Boolean(deepseek.apiKey), model: deepseek.model, providerLabel: deepseek.providerLabel },
+  };
+}
+
+function json(response, status, payload) {
+  response.status(status).json(payload);
+}
+
+async function usagePayload(scope, context = {}) {
+  const dailyLimit = getDailyLimit();
+  const usage = await readUsage();
+  const provider = chooseProvider(context);
+  const config = getProviderConfig(provider);
+  return {
+    configured: Boolean(config.apiKey),
     provider,
-    model,
+    providerLabel: config.providerLabel,
+    model: config.model,
+    providers: providerStatus(),
     scope,
     scopeLabel: scopeLabels[scope] || '当前页面',
     limited: usage.count >= dailyLimit,
+    used: usage.count,
     remaining: Math.max(dailyLimit - usage.count, 0),
     dailyLimit,
+    resetAt: `${getShanghaiDateKey()} 24:00 Asia/Shanghai`,
+    quotaStorage: usage.storage,
   };
 }
 
-/**
- * Vercel Serverless Function 主入口。
- * 负责限额、敏感信息拦截、在线服务调用和降级提示。
- */
 export default async function handler(request, response) {
+  setCorsHeaders(response);
+
+  if (request.method === 'OPTIONS') {
+    if (typeof response.status === 'function' && typeof response.end === 'function') return response.status(204).end();
+    return json(response, 204, {});
+  }
+
   const queryScope = request.query?.scope;
   const bodyScope = request.body?.chatScope || request.body?.context?.chatScope;
   const scope = resolveScope(queryScope || bodyScope || 'lcs_scs');
 
   if (request.method === 'GET') {
-    return json(response, 200, usagePayload(request, scope));
+    return json(response, 200, await usagePayload(scope, { chatScope: scope, mode: request.query?.mode || '' }));
   }
 
   if (request.method !== 'POST') {
-    response.setHeader('Allow', 'GET, POST');
-    return json(response, 405, { error: '仅支持 GET 或 POST 请求。' });
+    response.setHeader('Allow', 'GET, POST, OPTIONS');
+    return json(response, 405, { error: '仅支持 GET、POST 或 OPTIONS 请求。' });
   }
 
   const messages = normalizeMessages(request.body?.messages);
@@ -295,36 +338,47 @@ export default async function handler(request, response) {
   }
 
   const dailyLimit = getDailyLimit();
-  const usage = readUsage(request, scope);
+  const usage = await readUsage();
   if (usage.count >= dailyLimit) {
-    writeUsage(response, usage, scope);
+    const selectedConfig = getProviderConfig(chooseProvider(context));
     return json(response, 200, {
       limited: true,
+      provider: selectedConfig.provider,
+      providerLabel: selectedConfig.providerLabel,
+      model: selectedConfig.model,
       scope,
       scopeLabel: scopeLabels[scope] || '当前页面',
+      used: usage.count,
       remaining: 0,
       dailyLimit,
+      quotaStorage: usage.storage,
       reply: `今日问答次数已达上限 ${dailyLimit} 次。`,
     });
   }
 
-  const { apiKey, baseUrl, model, provider } = getModelConfig();
+  const selectedProvider = chooseProvider(context);
+  const { apiKey, baseUrl, model, provider, providerLabel } = getProviderConfig(selectedProvider);
   if (!apiKey) {
     return json(response, 200, {
       configured: false,
       provider,
+      providerLabel,
       model,
       scope,
       scopeLabel: scopeLabels[scope] || '当前页面',
+      used: usage.count,
       remaining: Math.max(dailyLimit - usage.count, 0),
       dailyLimit,
-      reply: '当前未启用在线回答。算法与可视化仍可完整运行，问答区会显示基础说明。',
+      quotaStorage: usage.storage,
+      reply: `当前未启用 ${providerLabel} 在线回答。算法与可视化仍可完整运行，问答区会显示基础说明。`,
     });
   }
 
   const pdfContext = await extractPdfText(context);
   const modelContext = {
     ...context,
+    provider,
+    providerLabel,
     pdfText: pdfContext.text,
     pdfTextStatus: pdfContext.status,
   };
@@ -352,7 +406,7 @@ export default async function handler(request, response) {
           },
           {
             role: 'user',
-            content: `当前页面、PDF 与文献上下文：${JSON.stringify(modelContext)}`,
+            content: `当前页面、PDF、模型与文献上下文：${JSON.stringify(modelContext)}`,
           },
           ...messages,
         ],
@@ -366,17 +420,18 @@ export default async function handler(request, response) {
       });
     }
 
-    const nextUsage = { date: usage.date, count: usage.count + 1 };
-    writeUsage(response, nextUsage, scope);
-
+    const nextUsage = await incrementUsage();
     return json(response, 200, {
       configured: true,
       provider,
+      providerLabel,
       model,
       scope,
       scopeLabel: scopeLabels[scope] || '当前页面',
+      used: nextUsage.count,
       remaining: Math.max(dailyLimit - nextUsage.count, 0),
       dailyLimit,
+      quotaStorage: nextUsage.storage,
       reply: payload?.choices?.[0]?.message?.content || '暂时没有生成回复。',
     });
   } catch (error) {

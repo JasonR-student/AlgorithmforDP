@@ -1,5 +1,6 @@
 import { APP_VERSION } from '../../config/version.js';
 import { PRESETS } from '../../config/presets.js';
+import AppFooter from '../../components/AppFooter.jsx';
 import DpVisualizer from '../../components/DpVisualizer.jsx';
 
 /**
@@ -75,6 +76,7 @@ export default function StandaloneVisualPage({
           <DpVisualizer result={result} standalone />
         </section>
       </main>
+      <AppFooter compact />
     </div>
   );
 }

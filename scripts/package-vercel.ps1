@@ -2,8 +2,8 @@ $ErrorActionPreference = "Stop"
 
 $root = Resolve-Path (Join-Path $PSScriptRoot "..")
 $release = Join-Path $root "release"
-$packageDir = Join-Path $release ("vercel-package-1.0.4-" + [DateTimeOffset]::UtcNow.ToUnixTimeSeconds())
-$zipPath = Join-Path $release "LCS_SCS_Visualizer_Vercel_1.0.4.zip"
+$packageDir = Join-Path $release ("vercel-package-1.1.3-" + [DateTimeOffset]::UtcNow.ToUnixTimeSeconds())
+$zipPath = Join-Path $release "LCS_SCS_Visualizer_Vercel_1.1.3.zip"
 
 New-Item -ItemType Directory -Force -Path $release | Out-Null
 
@@ -44,7 +44,7 @@ foreach ($dir in $dirs) {
 }
 
 New-Item -ItemType Directory -Force -Path (Join-Path $packageDir "docs") | Out-Null
-Copy-Item -LiteralPath (Join-Path $root "docs\USAGE_1.0.4.md") -Destination (Join-Path $packageDir "docs\USAGE_1.0.4.md") -Force
+Copy-Item -LiteralPath (Join-Path $root "docs\USAGE_1.1.3.md") -Destination (Join-Path $packageDir "docs\USAGE_1.1.3.md") -Force
 Copy-Item -LiteralPath (Join-Path $root "docs\references") -Destination (Join-Path $packageDir "docs\references") -Recurse -Force
 
 if (-not (Test-Path (Join-Path $packageDir "public\lcs_scs.wasm"))) {
@@ -58,7 +58,7 @@ try {
   Write-Host "Vercel package built: $zipPath"
 } catch {
   Start-Sleep -Milliseconds 1200
-  $fallbackZipPath = Join-Path $release ("LCS_SCS_Visualizer_Vercel_1.0.4_source_" + [DateTimeOffset]::UtcNow.ToUnixTimeSeconds() + ".zip")
+  $fallbackZipPath = Join-Path $release ("LCS_SCS_Visualizer_Vercel_1.1.3_source_" + [DateTimeOffset]::UtcNow.ToUnixTimeSeconds() + ".zip")
   Compress-Archive -Path (Join-Path $packageDir "*") -DestinationPath $fallbackZipPath -Force
   Write-Host "Vercel package built: $fallbackZipPath"
 }

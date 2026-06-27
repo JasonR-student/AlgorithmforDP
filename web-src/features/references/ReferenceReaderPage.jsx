@@ -1,4 +1,5 @@
 import AIChatBot from '../../components/AIChatBot.jsx';
+import AppFooter from '../../components/AppFooter.jsx';
 
 /**
  * 独立文献阅读页。
@@ -55,6 +56,7 @@ export default function ReferenceReaderPage({ reference, context }) {
           />
         </aside>
       </main>
+      <AppFooter compact />
     </div>
   );
 }

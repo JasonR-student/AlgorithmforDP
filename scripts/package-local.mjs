@@ -7,7 +7,7 @@ const root = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const dist = join(root, 'dist');
 const release = join(root, 'release');
 const localDir = join(release, 'local');
-const version = '1.0.4';
+const version = '1.1.3';
 
 /**
  * Reads a UTF-8 text file and returns it as a string.
@@ -78,7 +78,7 @@ static BOOL temp_file_path(wchar_t* path, DWORD capacity) {
     if (lstrlenW(temp) + 32 >= (int)capacity) return FALSE;
 
     lstrcpyW(path, temp);
-    lstrcatW(path, L"LCS_SCS_Visualizer_1_0_4");
+    lstrcatW(path, L"LCS_SCS_Visualizer_1_1_3");
     CreateDirectoryW(path, NULL);
 
     if (lstrlenW(path) + 12 >= (int)capacity) return FALSE;

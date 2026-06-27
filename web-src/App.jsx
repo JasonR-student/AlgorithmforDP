@@ -1,7 +1,7 @@
 ﻿import AIChatBot from './components/AIChatBot.jsx';
 import DpVisualizer from './components/DpVisualizer.jsx';
+import AppFooter from './components/AppFooter.jsx';
 import Navbar from './components/Navbar.jsx';
-import { APP_VERSION } from './config/version.js';
 import ControlPanel from './features/control/ControlPanel.jsx';
 import CoreResultsView from './features/core/CoreResultsView.jsx';
 import AlgorithmDocsView from './features/docs/AlgorithmDocsView.jsx';
@@ -109,10 +109,7 @@ export default function App() {
         <LongTextDialog str1={model.str1} str2={model.str2} onClose={() => model.setLongOpen(false)} onOpenStandalone={model.openStandaloneVisual} />
       ) : null}
 
-      <footer className="site-footer">
-        <span>Copyright 2026 任正江 | JasonRhan. All rights reserved.</span>
-        <span>LCS&SCS Visualizer {APP_VERSION}</span>
-      </footer>
+      <AppFooter />
 
       <AIChatBot isOpen={model.chatOpen} setIsOpen={model.setChatOpen} context={model.context} />
     </div>

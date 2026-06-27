@@ -2,8 +2,8 @@
  * 构造问答区需要的当前实验上下文。
  * 所有字段都保持简短，便于后端代理限制输入体积并保护页面性能。
  */
-export function buildWorkspaceContext({ str1, str2, result, selectedRef, readerReference }) {
-  const reference = selectedRef || readerReference || {};
+export function buildWorkspaceContext({ str1, str2, result, selectedRef, active }) {
+  const reference = active === 'refs' ? selectedRef || {} : {};
   return {
     str1Length: Array.from(str1).length,
     str2Length: Array.from(str2).length,
