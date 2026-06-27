@@ -3,6 +3,9 @@
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
   "cleanUrls": true,
+  "env": {
+    "NODE_OPTIONS": "--no-deprecation"
+  },
   "headers": [
     {
       "source": "/lcs_scs.wasm",
